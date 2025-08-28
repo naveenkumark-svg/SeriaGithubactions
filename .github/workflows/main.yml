@@ -29,21 +29,24 @@ jobs:
         # Setup MySQL
         mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';" 2>/dev/null || echo "MySQL already configured"
         
-        # Install frappe-bench globally
-        pip3 install frappe-bench
+        # Install frappe-bench using --user flag (safe method)
+        pip3 install --user frappe-bench
+        
+        # Add to PATH
+        export PATH="$HOME/.local/bin:$PATH"
         
         # Go to home directory
         cd $HOME
         rm -rf frappe-bench
         
         # Create ERPNext site
-        bench init --frappe-branch develop --python python3 frappe-bench
+        $HOME/.local/bin/bench init --frappe-branch develop --python python3 frappe-bench
         cd frappe-bench
-        bench get-app --branch develop https://github.com/frappe/erpnext.git
-        bench new-site test-site --admin-password admin --mariadb-root-password password
-        bench --site test-site install-app erpnext
+        $HOME/.local/bin/bench get-app --branch develop https://github.com/frappe/erpnext.git
+        $HOME/.local/bin/bench new-site test-site --admin-password admin --mariadb-root-password password
+        $HOME/.local/bin/bench --site test-site install-app erpnext
         
         # Start ERPNext in background
-        nohup bench start > bench.log 2>&1 &
+        nohup $HOME/.local/bin/bench start > bench.log 2>&1 &
         
         echo "ERPNext is starting... Please wait 60 seconds then check http://localhost:8000"
