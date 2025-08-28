@@ -23,6 +23,14 @@ jobs:
       run: |
         python3 -m pip install --user frappe-bench
         
+        # Add to PATH and verify installation
+        export PATH="$HOME/.local/bin:$PATH"
+        echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+        
+        # Verify bench is installed
+        which bench || echo "bench not found in PATH"
+        bench --version || echo "bench command failed"
+        
     - name: Install and start services
       run: |
         # Install MySQL and Redis if not installed
@@ -48,25 +56,25 @@ jobs:
         # Remove existing bench if it exists (for clean runs)
         rm -rf frappe-bench
         
-        # Initialize bench
-        ~/.local/bin/bench init --frappe-branch develop --python python3 frappe-bench
+        # Initialize bench (use bench directly since it's in PATH now)
+        bench init --frappe-branch develop --python python3 frappe-bench
         cd frappe-bench
         
         # Get ERPNext
-        ~/.local/bin/bench get-app --branch develop https://github.com/frappe/erpnext.git
+        bench get-app --branch develop https://github.com/frappe/erpnext.git
         
         # Create site
-        ~/.local/bin/bench new-site test-site --admin-password admin --mariadb-root-password password
+        bench new-site test-site --admin-password admin --mariadb-root-password password
         
         # Install ERPNext
-        ~/.local/bin/bench --site test-site install-app erpnext
+        bench --site test-site install-app erpnext
         
     - name: Start ERPNext
       run: |
         cd $HOME/frappe-bench
         
         # Start in background
-        nohup ~/.local/bin/bench start > bench.log 2>&1 &
+        nohup bench start > bench.log 2>&1 &
         sleep 45
         
         # Test if site is running
@@ -75,7 +83,7 @@ jobs:
     - name: Show site info
       run: |
         cd $HOME/frappe-bench
-        ~/.local/bin/bench --site test-site list-apps
+        bench --site test-site list-apps
         
         # Show logs
         echo "=== Recent logs ==="
