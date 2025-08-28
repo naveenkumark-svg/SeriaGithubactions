@@ -1,4 +1,4 @@
-name: Simple ERPNext Deploy
+name: ERPNext Docker Deploy
 
 on:
   push:
@@ -16,38 +16,84 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install and setup everything
+    - name: Deploy ERPNext Stack
       run: |
-        # Install services
-        arch -arm64 brew install mysql redis node || echo "Some packages already installed"
+        # Create docker-compose file
+        cat > docker-compose.yml << 'EOF'
+        version: '3.7'
+
+        services:
+          db:
+            image: mariadb:10.6
+            command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-character-set-client-handshake --skip-innodb-read-only-compressed
+            environment:
+              MYSQL_ROOT_PASSWORD: 123
+            volumes:
+              - db-data:/var/lib/mysql
+
+          redis:
+            image: redis:6.2-alpine
+
+          erpnext:
+            image: frappe/erpnext:latest
+            deploy:
+              restart_policy:
+                condition: on-failure
+            ports:
+              - "8000:8000"
+            volumes:
+              - sites:/home/frappe/frappe-bench/sites
+            depends_on:
+              - db
+              - redis
+
+          configurator:
+            image: frappe/erpnext:latest
+            deploy:
+              restart_policy:
+                condition: none
+            entrypoint:
+              - bash
+              - -c
+            command:
+              - >
+                ls -1 apps > sites/apps.txt;
+                bench set-config -g db_host db;
+                bench set-config -g redis_cache redis:6379;
+                bench set-config -g redis_queue redis:6379;
+                bench set-config -g redis_socketio redis:6379;
+                bench new-site frontend --no-mariadb-socket --admin-password=admin --db-root-password=123;
+                bench --site frontend install-app erpnext;
+                bench --site frontend enable-scheduler;
+                bench --site frontend set-maintenance-mode off;
+            depends_on:
+              - db
+              - redis
+            volumes:
+              - sites:/home/frappe/frappe-bench/sites
+
+        volumes:
+          sites:
+          db-data:
+        EOF
+
+        # Deploy the stack
+        docker-compose down -v
+        docker-compose up -d
+
+    - name: Wait and verify
+      run: |
+        echo "⏳ Waiting for ERPNext to initialize..."
+        sleep 90
         
-        # Start services
-        arch -arm64 brew services start mysql
-        arch -arm64 brew services start redis
-        sleep 15
+        # Check if containers are running
+        docker-compose ps
         
-        # Setup MySQL
-        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';" 2>/dev/null || echo "MySQL already configured"
+        echo ""
+        echo "🎉 ERPNext should be ready!"
+        echo "🌐 URL: http://localhost:8000"
+        echo "👤 Username: Administrator"
+        echo "🔑 Password: admin"
         
-        # Install frappe-bench using pipx (recommended by Python)
-        arch -arm64 brew install pipx
-        pipx install frappe-bench
-        
-        # Add to PATH
-        export PATH="$HOME/.local/bin:$PATH"
-        
-        # Go to home directory
-        cd $HOME
-        rm -rf frappe-bench
-        
-        # Create ERPNext site (pipx puts bench in PATH automatically)
-        bench init --frappe-branch develop --python python3 frappe-bench
-        cd frappe-bench
-        bench get-app --branch develop https://github.com/frappe/erpnext.git
-        bench new-site test-site --admin-password admin --mariadb-root-password password
-        bench --site test-site install-app erpnext
-        
-        # Start ERPNext in background
-        nohup bench start > bench.log 2>&1 &
-        
-        echo "ERPNext is starting... Please wait 60 seconds then check http://localhost:8000"
+        # Test if it's responding
+        curl -f http://localhost:8000 > /dev/null 2>&1 && echo "✅ ERPNext is responding!" || echo "⚠️ ERPNext might still be starting..."
