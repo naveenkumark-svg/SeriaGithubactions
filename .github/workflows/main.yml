@@ -1,4 +1,4 @@
-name: Local ERPNext Deploy
+name: Simple ERPNext Deploy
 
 on:
   push:
@@ -6,85 +6,44 @@ on:
       - main
       - staging
       - develop
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:    
 
 jobs:
-  deploy-local:
+  deploy:
     runs-on: self-hosted
     
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-        
-    - name: Install frappe-bench
+
+    - name: Install and setup everything
       run: |
-        python3 -m pip install --user frappe-bench
-        
-        # Add to PATH and verify installation
-        export PATH="$HOME/.local/bin:$PATH"
-        echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
-        
-        # Verify bench is installed
-        which bench || echo "bench not found in PATH"
-        bench --version || echo "bench command failed"
-        
-    - name: Install and start services
-      run: |
-        # Install MySQL and Redis if not installed
-        arch -arm64 brew install mysql redis || echo "Some packages may already be installed"
+        # Install services
+        arch -arm64 brew install mysql redis node || echo "Some packages already installed"
         
         # Start services
         arch -arm64 brew services start mysql
         arch -arm64 brew services start redis
-        
-        # Wait for services to start
         sleep 15
         
-    - name: Setup MySQL (if needed)
-      run: |
-        # Try to setup MySQL password (ignore if already set)
+        # Setup MySQL
         mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';" 2>/dev/null || echo "MySQL already configured"
-        mysql -u root -ppassword -e "FLUSH PRIVILEGES;" 2>/dev/null || echo "MySQL flush completed"
         
-    - name: Create ERPNext site
-      run: |
+        # Install frappe-bench globally
+        pip3 install frappe-bench
+        
+        # Go to home directory
         cd $HOME
-        
-        # Remove existing bench if it exists (for clean runs)
         rm -rf frappe-bench
         
-        # Initialize bench (use bench directly since it's in PATH now)
+        # Create ERPNext site
         bench init --frappe-branch develop --python python3 frappe-bench
         cd frappe-bench
-        
-        # Get ERPNext
         bench get-app --branch develop https://github.com/frappe/erpnext.git
-        
-        # Create site
         bench new-site test-site --admin-password admin --mariadb-root-password password
-        
-        # Install ERPNext
         bench --site test-site install-app erpnext
         
-    - name: Start ERPNext
-      run: |
-        cd $HOME/frappe-bench
-        
-        # Start in background
+        # Start ERPNext in background
         nohup bench start > bench.log 2>&1 &
-        sleep 45
         
-        # Test if site is running
-        curl -f http://localhost:8000 || echo "Site not ready yet, check logs"
-        
-    - name: Show site info
-      run: |
-        cd $HOME/frappe-bench
-        bench --site test-site list-apps
-        
-        # Show logs
-        echo "=== Recent logs ==="
-        tail -30 bench.log || echo "No logs found"
+        echo "ERPNext is starting... Please wait 60 seconds then check http://localhost:8000"
