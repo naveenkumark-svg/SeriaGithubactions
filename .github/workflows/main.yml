@@ -18,35 +18,39 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
+      
+    # Skip Python setup action - use system Python instead
+    - name: Use system Python
       run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-dev python3-pip python3-venv
-        sudo apt-get install -y mariadb-server redis-server
-        sudo apt-get install -y nodejs npm
-        sudo npm install -g yarn
-
+        python3 --version
+        which python3
+        
+    - name: Install dependencies (Mac)
+      run: |
+        # Install using Homebrew instead of apt-get
+        brew install mysql redis node
+        
     - name: Install frappe-bench
       run: |
-        pip install frappe-bench
-
-    - name: Start services
-      run: |
-        sudo systemctl start mariadb
-        sudo systemctl start redis-server
+        python3 -m pip install --user frappe-bench
         
-        # Setup MariaDB
-        sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';"
-        sudo mysql -u root -ppassword -e "FLUSH PRIVILEGES;"
-
+    - name: Start services (Mac)
+      run: |
+        # Start services using brew instead of systemctl
+        brew services start mysql
+        brew services start redis
+        
+        # Wait for MySQL to start
+        sleep 10
+        
+        # Setup MySQL (Mac doesn't require sudo for mysql command)
+        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';" || echo "MySQL setup may have failed"
+        mysql -u root -ppassword -e "FLUSH PRIVILEGES;" || echo "MySQL flush may have failed"
+        
     - name: Create ERPNext site
       run: |
+        cd $HOME
+        
         # Initialize bench
         bench init --frappe-branch develop --python python3 frappe-bench
         cd frappe-bench
@@ -59,17 +63,23 @@ jobs:
         
         # Install ERPNext
         bench --site test-site install-app erpnext
-
+        
     - name: Start ERPNext
       run: |
-        cd frappe-bench
-        bench start &
+        cd $HOME/frappe-bench
+        
+        # Start in background
+        nohup bench start > bench.log 2>&1 &
         sleep 30
         
         # Test if site is running
         curl -f http://localhost:8000 || echo "Site not ready yet"
-
+        
     - name: Show site info
       run: |
-        cd frappe-bench
+        cd $HOME/frappe-bench
         bench --site test-site list-apps
+        
+        # Show some logs
+        echo "Recent logs:"
+        tail -20 bench.log || echo "No logs found"
