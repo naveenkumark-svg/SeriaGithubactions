@@ -1,4 +1,4 @@
-name: Local ERPNext Deploy
+name: ERPNext Docker Deploy
 
 on:
   push:
@@ -12,74 +12,72 @@ on:
   workflow_dispatch:    
 
 jobs:
-  deploy-local:
+  deploy-docker:
     runs-on: self-hosted
     
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-        
-    - name: Install frappe-bench
+
+    - name: Create docker-compose.yml
       run: |
-        python3 -m pip install --user frappe-bench
+        cat > docker-compose.yml << 'EOF'
+        version: '3.8'
         
-    - name: Start services (if not running)
+        services:
+          db:
+            image: mariadb:10.6
+            environment:
+              MYSQL_ROOT_PASSWORD: admin
+              MYSQL_DATABASE: erpnext
+            ports:
+              - "3306:3306"
+            volumes:
+              - db_data:/var/lib/mysql
+          
+          redis:
+            image: redis:alpine
+            ports:
+              - "6379:6379"
+          
+          erpnext:
+            image: frappe/erpnext:latest
+            ports:
+              - "8000:8000"
+            environment:
+              DB_HOST: db
+              DB_ROOT_USER: root
+              DB_ROOT_PASSWORD: admin
+              REDIS_CACHE: redis:6379
+              REDIS_QUEUE: redis:6379
+            depends_on:
+              - db
+              - redis
+        
+        volumes:
+          db_data:
+        EOF
+
+    - name: Stop existing containers
       run: |
-        # Check and start MySQL if needed
-        if ! brew services list | grep -q "mysql.*started"; then
-          arch -arm64 brew services start mysql
-        fi
-        
-        # Check and start Redis if needed  
-        if ! brew services list | grep -q "redis.*started"; then
-          arch -arm64 brew services start redis
-        fi
-        
-        # Wait for services
-        sleep 10
-        
-    - name: Setup MySQL (if needed)
-      run: |
-        # Try to setup MySQL password (ignore if already set)
-        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';" 2>/dev/null || echo "MySQL already configured"
-        mysql -u root -ppassword -e "FLUSH PRIVILEGES;" 2>/dev/null || echo "MySQL flush completed"
-        
-    - name: Create ERPNext site
-      run: |
-        cd $HOME
-        
-        # Remove existing bench if it exists (for clean runs)
-        rm -rf frappe-bench
-        
-        # Initialize bench
-        ~/.local/bin/bench init --frappe-branch develop --python python3 frappe-bench
-        cd frappe-bench
-        
-        # Get ERPNext
-        ~/.local/bin/bench get-app --branch develop https://github.com/frappe/erpnext.git
-        
-        # Create site
-        ~/.local/bin/bench new-site test-site --admin-password admin --mariadb-root-password password
-        
-        # Install ERPNext
-        ~/.local/bin/bench --site test-site install-app erpnext
-        
+        docker-compose down -v || echo "No existing containers"
+
     - name: Start ERPNext
       run: |
-        cd $HOME/frappe-bench
+        docker-compose up -d
         
-        # Start in background
-        nohup ~/.local/bin/bench start > bench.log 2>&1 &
-        sleep 45
-        
-        # Test if site is running
-        curl -f http://localhost:8000 || echo "Site not ready yet, check logs"
-        
-    - name: Show site info
+        echo "Waiting for ERPNext to start..."
+        sleep 60
+
+    - name: Check status
       run: |
-        cd $HOME/frappe-bench
-        ~/.local/bin/bench --site test-site list-apps
+        docker-compose ps
+        
+        echo ""
+        echo "ERPNext should be available at: http://localhost:8000"
+        echo "Default credentials: Administrator / admin"
         
         # Show logs
-        echo "=== Recent logs ==="
-        tail -30 bench.log || echo "No logs found"
+        echo ""
+        echo "=== ERPNext Logs ==="
+        docker-compose logs erpnext --tail=20
