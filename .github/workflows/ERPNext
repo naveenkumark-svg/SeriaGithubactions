@@ -1,78 +1,23 @@
 name: Working ERPNext Deploy
 
 on:
-  push:
-    branches: 
-      - main
-      - staging
-      - develop
   workflow_dispatch:    
-
 jobs:
   deploy:
-    runs-on: self-hosted
-    
+    runs-on: self-hosted    
     steps:
     - name: Checkout repository
         uses: actions/checkout@v4
         with:
           repository: bizaXL/Frape-Docker
-          ref: Devtest1
+          ref: master
           token: ${{ secrets.PAT }}
-    - name: Deploy Working ERPNext
-      run: |
-        # Clean up existing containers
-        docker-compose down -v || true
+    - name: checkin directory
+      run:  cd /Users/naveenkumark/actions-runner/Bablu/SeriaGithubactions/SeriaGithubactions
+
+    - name: deploy
+      run:  docker-compose -f pwd.yml up -d
         
-        # Create a simpler, working docker-compose
-        cat > docker-compose.yml << 'EOF'
-        services:
-          db:
-            image: mariadb:10.6
-            environment:
-              MYSQL_ROOT_PASSWORD: 123
-              MYSQL_DATABASE: erpnext
-            volumes:
-              - db_data:/var/lib/mysql
-            command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-          redis:
-            image: redis:alpine
-
-          erpnext:
-            image: frappe/erpnext:latest
-            ports:
-              - "8000:8000"
-            environment:
-              - DB_HOST=db
-              - DB_PORT=3306
-              - REDIS_CACHE=redis:6379
-              - REDIS_QUEUE=redis:6379
-              - REDIS_SOCKETIO=redis:6379
-              - SOCKETIO_PORT=9000
-            depends_on:
-              - db
-              - redis
-            volumes:
-              - sites:/home/frappe/frappe-bench/sites
-            command: >
-              bash -c "
-              bench set-config -g db_host $$DB_HOST &&
-              bench set-config -g redis_cache $$REDIS_CACHE &&
-              bench set-config -g redis_queue $$REDIS_QUEUE &&
-              bench set-config -g redis_socketio $$REDIS_SOCKETIO &&
-              bench new-site localhost --no-mariadb-socket --admin-password=admin --db-root-password=123 --install-app=erpnext --set-default &&
-              bench start
-              "
-
-        volumes:
-          db_data:
-          sites:
-        EOF
-
-        # Start the stack
-        docker-compose up -d
-
     - name: Wait and Monitor
       run: |
         echo "🚀 Starting ERPNext..."
