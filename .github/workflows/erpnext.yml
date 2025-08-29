@@ -10,8 +10,8 @@ jobs:
     runs-on: self-hosted    
     steps:
     - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
+      uses: actions/checkout@v4
+      with:
           repository: bizaXL/Frape-Docker
           ref: master
           token: ${{ secrets.PAT }}
