@@ -1,0 +1,47 @@
+name: Working Docker-compose
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:    
+jobs:
+  deploy:
+    runs-on: self-hosted    
+    steps:
+    - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: bizaXL/Frape-Docker
+          ref: master
+          token: ${{ secrets.PAT }}
+    - name: checkin directory
+      run:  cd /Users/naveenkumark/actions-runner/Bablu/SeriaGithubactions/SeriaGithubactions
+
+    - name: deploy
+      run:  docker-compose -f pwd.yml up -d
+        
+    - name: Wait and Monitor
+      run: |
+        echo "🚀 Starting ERPNext..."
+        
+        # Wait longer for proper initialization
+        for i in {1..20}; do
+          echo "⏳ Waiting... ($i/20)"
+          sleep 30
+          
+          # Check if ERPNext is responding
+          if curl -f http://localhost:8000 > /dev/null 2>&1; then
+            echo "✅ ERPNext is ready!"
+            echo "🌐 URL: http://localhost:8000"
+            echo "👤 Username: Administrator"
+            echo "🔑 Password: admin"
+            exit 0
+          fi
+          
+          # Show progress
+          docker-compose logs erpnext --tail=5
+        done
+        
+        echo "⚠️ ERPNext taking longer than expected"
+        echo "Check logs with: docker-compose logs erpnext"
