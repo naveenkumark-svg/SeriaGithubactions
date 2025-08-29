@@ -1,4 +1,4 @@
-name: Working ERPNext Deploy
+name: Working Docker-compose
 
 on:
   workflow_dispatch:    
